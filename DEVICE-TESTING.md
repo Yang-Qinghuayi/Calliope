@@ -4,7 +4,7 @@
 
 ## 构建门槛
 
-- [ ] Node 24 `npm ci`、`npm run check`、双平台 bundle。
+- [ ] Node 24 `pnpm install --frozen-lockfile`、`pnpm run check`、`pnpm run bundle:check`（双平台 bundle）。
 - [ ] Android Gradle Debug/Release 成功，Nitro/View 可装载。
 - [ ] macOS CocoaPods + iOS Simulator Debug/Release 成功。
 - [ ] iPhone、iPad、Android 手机、Android 平板各至少一台真机。
