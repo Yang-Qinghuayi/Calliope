@@ -116,7 +116,7 @@ jobs:
       # release 变体使用 prebuild 生成的 debug keystore，仅用于本地安装测试，不能上架。
       - name: 编译 APK / AAB
         working-directory: android
-        run: ./gradlew assembleDebug assembleRelease bundleRelease --no-daemon --stacktrace
+        run: ./gradlew assembleDebug assembleRelease bundleRelease --no-daemon
       - name: 整理产物
         run: |
           mkdir -p artifacts
@@ -186,18 +186,38 @@ jobs:
           echo "WORKSPACE=$workspace" >> "$GITHUB_ENV"
           echo "scheme=$scheme / workspace=$workspace"
       # 模拟器构建不需要签名，因此不需要任何 Apple 证书 / secrets。
+      # -quiet 避免 xcodebuild 打出几十 MB 日志被 GitHub 截断，失败时另存日志便于定位。
       - name: xcodebuild（Release / 模拟器 / 不签名）
         run: |
+          set -o pipefail
           xcodebuild \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
             -configuration Release \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath ios/build \
+            -quiet \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            build
+            build 2>&1 | tee ios-xcodebuild.log
+      - name: xcodebuild 失败诊断
+        if: failure()
+        run: |
+          if [ -f ios-xcodebuild.log ]; then
+            echo '=== error / fatal 行 ==='
+            grep -nE 'error:|fatal error:|BUILD FAILED|The following build commands failed' ios-xcodebuild.log | tail -60 || true
+            echo '=== 日志末尾 80 行 ==='
+            tail -n 80 ios-xcodebuild.log
+          fi
+      - name: 上传 xcodebuild 日志（失败时）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-xcodebuild-log
+          path: ios-xcodebuild.log
+          if-no-files-found: warn
+          retention-days: 14
       - name: 打包 .app
         run: |
           app="$(find ios/build/Build/Products -type d -name "${SCHEME}.app" -print -quit)"

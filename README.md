@@ -244,7 +244,7 @@ Calliope/                      # 仓库根目录，即本工程
 - iOS 产物是 `CODE_SIGNING_ALLOWED=NO` 编出来的模拟器 `.app`，只能装进 iOS Simulator，**不能装真机、不能上 TestFlight**。要真机 IPA / 商店包，需要另外配置 Apple 证书、provisioning profile、Android release keystore 和导出步骤（或改用 EAS Build），本 workflow 不包含这些。
 - `on.push.branches` 目前只写 `main`，想让所有分支的 push 都触发就改成 `['**']`；公共仓库 macOS 分钟免费，私有仓库按 10 倍计费。`concurrency` 会取消同一 ref 上的旧构建。
 
-> 首次运行结果请以 Actions 日志为准：本仓库此前只在本地验证过 `prebuild` / `bundle`，没有真正跑过 Gradle 与 `xcodebuild`。Readium 的 Kotlin 2.3.20、JitPack、Readium podspec 源和 `withReadium.cjs` 的原生改动，都只能在 CI 或你自己的机器上完成首次验证。
+> 首次 CI 运行已经暴露并修复了两类问题：`plugins/withReadium.cjs` 现在把 Android 的 `kotlin-gradle-plugin` classpath 固定到 `android.kotlinVersion`（否则 RN 模板的 Kotlin 2.1 编译器读不了 Readium 3.3 的 2.3 元数据）；iOS 的 `xcodebuild` 改为 `-quiet` 并落盘日志，避免几十 MB 输出被 GitHub 截断、看不到真实报错。Gradle / `xcodebuild` 的首次真编译只能以 Actions 日志或你本机的结果为准。
 
 ## 常见问题
 
@@ -254,7 +254,7 @@ Calliope/                      # 仓库根目录，即本工程
 
 **主题类名不生效？** 检查 `postcss.config.js`（不是 `.cjs`，当前 Expo 的 PostCSS 探测只覆盖 `.js/.mjs/.json`），以及 `metro.config.cjs` 的 NativeWind v5 包装；尝试 `pnpm start --clear`（不要写成 `pnpm start -- --clear`）。
 
-**Android Kotlin 编译不兼容？** 检查生成的 `android/gradle.properties` 中 `android.kotlinVersion=2.3.20`。修改原生设置后重新 prebuild；检查本机 JDK/Gradle/SDK 错误，不要绕过 peer 冲突强行安装。
+**Android Kotlin 编译不兼容？** 检查生成的 `android/gradle.properties` 中 `android.kotlinVersion=2.3.20`，以及 `plugins/withReadium.cjs` 是否把 `android/build.gradle` 里的 `kotlin-gradle-plugin` classpath 固定到同一个属性：RN 模板默认按 React Native 的 2.1.x 版本目录解析编译器，而 Readium 3.3.0 是 Kotlin 2.3 元数据，两者不一致会报 “binary version of its metadata is 2.3.0, expected version is 2.1.0”。修改原生设置后重新 prebuild；检查本机 JDK/Gradle/SDK 错误，不要绕过 peer 冲突强行安装。
 
 **iOS 找不到 Readium Pod 或 Minizip 编译失败？** 检查插件生成的 Readium spec source、`readium_pods`、`readium_post_install`，使用当前锁定版本重新安装 pods；不要通过忽略报错声称构建成功。
 

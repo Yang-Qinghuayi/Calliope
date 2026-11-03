@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 const require = createRequire(import.meta.url);
-const { patchPodfile, patchGradle } = require('../plugins/withReadium.cjs');
+const { patchPodfile, patchGradle, patchProjectBuildGradle } = require('../plugins/withReadium.cjs');
 test('native setup is idempotent and fails on unknown templates', () => {
   const pod = "target 'YSH' do\n post_install do |installer|\n end\nend";
   const patched = patchPodfile(pod);
@@ -15,6 +15,13 @@ test('native setup is idempotent and fails on unknown templates', () => {
   assert.match(gradle, /coreLibraryDesugaringEnabled true/);
   assert.throws(() => patchGradle('unsupported'));
   assert.throws(() => patchPodfile('unsupported'));
+  const rootGradle =
+    "buildscript {\n  dependencies {\n    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')\n  }\n}";
+  const patchedRoot = patchProjectBuildGradle(rootGradle);
+  assert.equal(patchProjectBuildGradle(patchedRoot), patchedRoot);
+  assert.match(patchedRoot, /android\.kotlinVersion/);
+  assert.match(patchedRoot, /kotlin-gradle-plugin:/);
+  assert.throws(() => patchProjectBuildGradle('unsupported'));
 });
 test('NativeWind v5 semantic variables survive actual Tailwind and native CSS compilation', async () => {
   const postcss = require('postcss'),
