@@ -1,0 +1,227 @@
+name: 构建 Android / iOS 产物
+
+# 每次 push 到 main、每次 PR 更新都会打包；也可在 Actions 页面手动触发。
+# 想让所有分支的 push 都触发，把 branches 改成 ['**'] 即可。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同一个 ref 上新构建会取消旧构建，避免 macOS 分钟被连续 push 堆满。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: '1'
+  EXPO_NO_TELEMETRY: '1'
+
+jobs:
+  # 轻量门槛：类型检查、测试、双平台 JS bundle。原生 job 依赖它，先失败就不浪费原生编译。
+  check:
+    name: 检查 + JS bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      # 版本从 package.json 的 packageManager 读取，不要在这里再写 version（会冲突）。
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+      - name: 环境版本
+        run: |
+          node --version
+          pnpm --version
+      - name: 类型检查 + 28 个测试
+        run: pnpm run check
+      - name: 导出 Android / iOS JS bundle
+        run: pnpm run bundle:check
+      - name: 上传 JS bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-bundles-android-ios
+          path: .expo/export/
+          if-no-files-found: error
+          retention-days: 14
+      - name: 写入运行摘要
+        run: |
+          {
+            echo '### 检查通过'
+            echo "- Node $(node --version) / pnpm $(pnpm --version)"
+            echo '- `pnpm run check`：类型检查 + 28 个测试通过'
+            echo '- `pnpm run bundle:check`：Android / iOS Hermes bundle 已导出'
+            echo '- 产物 `js-bundles-android-ios`（不需要设备）'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  android:
+    name: Android APK / AAB
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+      # ubuntu-latest 已预装 Android SDK 并设置 ANDROID_HOME。不要用 setup-android@v3，
+      # 它会去装已下架的 legacy `tools` 包而失败。RN 0.86.3 锁定 API 36 /
+      # Build Tools 36.0.0 / NDK 27.1.12297006；镜像自带的 NDK 是 27.3/29/30，
+      # 必须显式补齐，否则 AGP 自动下载 NDK 容易拿到坏包。
+      - name: 定位预装 SDK 并补齐组件
+        run: |
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
+          sdkmanager_cmd="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$sdkmanager_cmd" ]; then
+            sdkmanager_cmd="$(command -v sdkmanager || true)"
+          fi
+          if [ -z "$sdkmanager_cmd" ]; then
+            echo '::error::找不到 sdkmanager'
+            exit 1
+          fi
+          yes | "$sdkmanager_cmd" --licenses > /dev/null || true
+          "$sdkmanager_cmd" --install \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;27.1.12297006"
+      - name: 生成原生工程
+        run: pnpm exec expo prebuild --platform android --no-install
+      - name: 让 Gradle 使用预装 SDK
+        run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+      - name: 缓存 Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: gradle-${{ runner.os }}-
+      # release 变体使用 prebuild 生成的 debug keystore，仅用于本地安装测试，不能上架。
+      - name: 编译 APK / AAB
+        working-directory: android
+        run: ./gradlew assembleDebug assembleRelease bundleRelease --no-daemon --stacktrace
+      - name: 整理产物
+        run: |
+          mkdir -p artifacts
+          find android/app/build/outputs -type f \( -name '*.apk' -o -name '*.aab' \) -print0 |
+            while IFS= read -r -d '' f; do
+              cp "$f" "artifacts/Calliope-${GITHUB_RUN_NUMBER}-$(basename "$f")"
+            done
+          ls -lh artifacts
+      - name: 上传 Android 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-builds
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: 写入运行摘要
+        run: |
+          {
+            echo '### Android 产物'
+            echo '- debug APK / release APK / release AAB 已上传到 `android-builds`'
+            echo '- release 使用生成的 debug keystore 签名，仅用于安装测试，不能上架'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  ios:
+    name: iOS 模拟器 App
+    needs: check
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # macos-15 默认就是 Xcode 16.4，这里显式固定，避免镜像更新后悄悄换版本。
+      - name: 选择 Xcode 16.4
+        run: |
+          if [ -d /Applications/Xcode_16.4.app ]; then
+            sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+          else
+            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          fi
+          xcodebuild -version
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+      - name: 生成原生工程
+        run: pnpm exec expo prebuild --platform ios --no-install
+      - name: 安装 CocoaPods
+        working-directory: ios
+        run: pod install
+      # scheme / workspace 名跟 app.config.ts 的 name 走，运行时探测，改名也不会失效。
+      - name: 探测 scheme 与 workspace
+        run: |
+          proj="$(find ios -maxdepth 1 -name '*.xcodeproj' -print -quit)"
+          if [ -z "$proj" ]; then
+            echo '::error::没有找到生成的 .xcodeproj'
+            exit 1
+          fi
+          scheme="$(basename "$proj" .xcodeproj)"
+          workspace="ios/$scheme.xcworkspace"
+          if [ ! -d "$workspace" ]; then
+            echo "::error::没有找到 pod install 生成的 $workspace"
+            exit 1
+          fi
+          echo "SCHEME=$scheme" >> "$GITHUB_ENV"
+          echo "WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          echo "scheme=$scheme / workspace=$workspace"
+      # 模拟器构建不需要签名，因此不需要任何 Apple 证书 / secrets。
+      - name: xcodebuild（Release / 模拟器 / 不签名）
+        run: |
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+      - name: 打包 .app
+        run: |
+          app="$(find ios/build/Build/Products -type d -name "${SCHEME}.app" -print -quit)"
+          if [ -z "$app" ]; then
+            echo "::error::没有找到 ${SCHEME}.app"
+            find ios/build/Build/Products -maxdepth 3 -type d -name '*.app' -print || true
+            exit 1
+          fi
+          echo "app=$app"
+          zip_name="Calliope-ios-simulator-${GITHUB_RUN_NUMBER}.app.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$zip_name"
+          ls -lh "$zip_name"
+      - name: 上传 iOS 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-app
+          path: Calliope-ios-simulator-*.app.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: 写入运行摘要
+        run: |
+          {
+            echo '### iOS 产物'
+            echo "- $(xcodebuild -version | head -1)"
+            echo '- Release 配置的模拟器 `.app.zip` 已上传到 `ios-simulator-app`'
+            echo '- 未签名，只能装进 iOS Simulator；真机 IPA 需要另外配置签名证书'
+          } >> "$GITHUB_STEP_SUMMARY"

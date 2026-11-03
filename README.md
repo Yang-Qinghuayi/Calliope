@@ -1,5 +1,7 @@
 # YSH 阅读 · 移动端
 
+[![构建 Android / iOS 产物](https://github.com/Yang-Qinghuayi/Calliope/actions/workflows/build.yml/badge.svg)](https://github.com/Yang-Qinghuayi/Calliope/actions/workflows/build.yml)
+
 > 一个本地优先的 EPUB / PDF 阅读器，基于 React Native Readium，面向 Android、iOS 手机与平板，提供种子色驱动的 Material 主题。
 
 这段话可以直接用于项目介绍。更完整的介绍：
@@ -199,6 +201,7 @@ Calliope/                      # 仓库根目录，即本工程
 │   ├── domain/               # 模型、输入校验、导入检查、阅读偏好映射
 │   ├── services/             # 导入事务、Expo 文件适配、SQLite、进度、搜索、应用状态
 │   └── theme/colors.ts       # 官方种子计算与主题 token
+├── .github/workflows/build.yml # CI：Android / iOS 自动打包
 ├── plugins/withReadium.cjs    # 可重现的原生集成配置
 ├── tests/                    # 不需要模拟器的自动化测试
 ├── app.config.ts             # 仅 ios/android 平台
@@ -223,6 +226,26 @@ Calliope/                      # 仓库根目录，即本工程
 - 双页/竖排/固定版式、选区重排定位、VoiceOver/TalkBack、长列表性能必须真机验证。当前没有“完美阅读器”或所有出版物完全兼容的保证。
 - NativeWind 使用 RC，已固定 `lightningcss 1.30.1` 与 Expo 57 Metro 版本：1.30.2 被该 RC 明确禁止，较新的 CSS 编译依赖组合曾出现反序列化错误。不要无回归升级这些依赖。
 
+## 6. GitHub Actions 自动打包
+
+`.github/workflows/build.yml` 会在**每次 push 到 `main`、每次 PR 更新**时运行，也能在 Actions 页面手动触发（`workflow_dispatch`）。产物在对应 run 的 **Artifacts** 区下载，默认保留 14 天。
+
+| Job      | Runner                  | 做什么                                                                                                            | 产物                                                                 |
+| -------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `check`  | ubuntu-latest           | `pnpm run check` + `pnpm run bundle:check`                                                                            | `js-bundles-android-ios`：Android / iOS 的 Hermes bundle（`.expo/export`） |
+| `android`| ubuntu-latest           | `expo prebuild --platform android --no-install` → `./gradlew assembleDebug assembleRelease bundleRelease`                | `android-builds`：debug APK、release APK、release AAB                    |
+| `ios`    | macos-15（Xcode 16.4）   | `expo prebuild --platform ios --no-install` → `pod install` → `xcodebuild`（Release / 模拟器 / 不签名）                  | `ios-simulator-app`：`YSH.app.zip`                                     |
+
+`android` 和 `ios` 都 `needs: check`，类型检查或测试挂了就不启动原生编译。workflow 用 `pnpm/action-setup@v4`（版本直接读 `package.json` 的 `packageManager`，不要再写 `version`）、`.nvmrc` 的 Node 24 和 `pnpm install --frozen-lockfile`。Android 端显式补齐 RN 0.86.3 锁定的 `platforms;android-36` / `build-tools;36.0.0` / `ndk;27.1.12297006`（GitHub 镜像自带的是 27.3/29/30，靠 AGP 自动下载容易失败），并写 `android/local.properties` 指向 runner 预装 SDK；不用 `android-actions/setup-android@v3`，它会去装已下架的 legacy `tools` 包。iOS 端 scheme / workspace 名在运行时从生成的 `.xcodeproj` 探测，改 `app.config.ts` 的 `name` 不会让 workflow 失效。
+
+**不需要配置任何 secrets，但产物有明确边界：**
+
+- Android APK 用 `expo prebuild` 生成的 `debug.keystore` 签名，能装到模拟器/真机做测试，**不能上架**；AAB 也未做正式签名。
+- iOS 产物是 `CODE_SIGNING_ALLOWED=NO` 编出来的模拟器 `.app`，只能装进 iOS Simulator，**不能装真机、不能上 TestFlight**。要真机 IPA / 商店包，需要另外配置 Apple 证书、provisioning profile、Android release keystore 和导出步骤（或改用 EAS Build），本 workflow 不包含这些。
+- `on.push.branches` 目前只写 `main`，想让所有分支的 push 都触发就改成 `['**']`；公共仓库 macOS 分钟免费，私有仓库按 10 倍计费。`concurrency` 会取消同一 ref 上的旧构建。
+
+> 首次运行结果请以 Actions 日志为准：本仓库此前只在本地验证过 `prebuild` / `bundle`，没有真正跑过 Gradle 与 `xcodebuild`。Readium 的 Kotlin 2.3.20、JitPack、Readium podspec 源和 `withReadium.cjs` 的原生改动，都只能在 CI 或你自己的机器上完成首次验证。
+
 ## 常见问题
 
 **`Nitro` / `Readium` 原生模块找不到？** 不要用 Expo Go；确认 `.npmrc` 的 `node-linker=hoisted` 没有被删掉（pnpm 默认的隔离布局会让原生构建找不到模块）。原生依赖变更后重新运行 `pnpm run android` / `pnpm run ios`，仅重启 Metro 不会安装原生模块。
@@ -236,3 +259,5 @@ Calliope/                      # 仓库根目录，即本工程
 **iOS 找不到 Readium Pod 或 Minizip 编译失败？** 检查插件生成的 Readium spec source、`readium_pods`、`readium_post_install`，使用当前锁定版本重新安装 pods；不要通过忽略报错声称构建成功。
 
 **npm 用户还能用吗？** 可以，`npm ci` + `npm run check` 仍然可用，`package-lock.json` 与 `pnpm-lock.yaml` 由同一份 `package.json` 生成。React/React DOM 已对齐到 19.2.3，`npm ci` 不需要 `--force` 或 `--legacy-peer-deps`；升级依赖时记得同时更新两份锁文件。
+
+**CI 里为什么 iOS 是 `.app.zip` 不是 IPA？** 没有 Apple 签名证书时只能编模拟器包，`xcodebuild` 走 `CODE_SIGNING_ALLOWED=NO`。好处是不需要任何 secrets，也能把 Readium / Nitro 的原生编译跑起来；代价是产物只能装进 iOS Simulator。真机 IPA 需要补签名步骤，见第 6 节。
