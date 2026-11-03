@@ -1,0 +1,26 @@
+# pnpm 11+ 只从本文件读取项目级设置：
+#   - package.json 里的 "pnpm" 字段不再读取（onlyBuiltDependencies 等已移除）
+#   - .npmrc 只用于认证 / registry，node-linker 这类设置会被静默忽略
+# 下面这些键在 pnpm 10.26+ 与 pnpm 12 里都能读，所以旧版 pnpm 也不会读错。
+
+# React Native / Expo 的 Metro、Gradle、CocoaPods 与 config plugin 都按扁平
+# node_modules 查找依赖，必须使用 hoisted 布局。**不要删除这一行。**
+nodeLinker: hoisted
+
+# 依赖的构建脚本默认全部禁止（strictDepBuilds = true），这里只放行 tsx 依赖的 esbuild。
+# 旧写法 pnpm.onlyBuiltDependencies 在 pnpm 11 起已失效，必须用 allowBuilds。
+allowBuilds:
+  esbuild: true
+
+# pnpm 11+ 的供应链保护：新发布的版本要满 24 小时才会被解析安装
+# （pnpm 12 的默认值就是 1440，这里显式写出，让 pnpm 10 用户也得到同样行为）。
+minimumReleaseAge: 1440
+
+# 现有 pnpm-lock.yaml 由 pnpm 10 生成，下面这几个锁定版本发布时还没有这道门槛
+# （2026-11-02 发布）。它们发布满 24 小时后，可以删掉这份豁免列表。
+minimumReleaseAgeExclude:
+  - baseline-browser-mapping@2.11.35
+  - electron-to-chromium@1.5.473
+  - nativewind@5.0.0-rc.1
+  - semver@6.3.2
+  - semver@7.8.6

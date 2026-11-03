@@ -14,8 +14,8 @@
 
 ```bash
 node --version                  # 需要 v24+（.nvmrc = 24）
-corepack enable                 # 本机还没有 pnpm 时；Node 24 自带，packageManager 固定 pnpm@10.34.9
-pnpm install --frozen-lockfile   # 按 pnpm-lock.yaml 安装依赖
+npm i -g pnpm@12.16.1           # 本机还没有 pnpm 时；packageManager 固定 pnpm@12.16.1
+pnpm install --frozen-lockfile   # 按 pnpm-lock.yaml 安装依赖；设置全在 pnpm-workspace.yaml
 pnpm run check                   # TypeScript 严格检查 + 29 个自动化测试
 pnpm run android                 # Android：先启动模拟器或连接真机
 # macOS + Xcode 时改用：pnpm run ios
@@ -33,7 +33,7 @@ pnpm start                      # expo start --dev-client，启动 Metro
 
 | 目的                    | 命令                                                     | 前提 / 说明                                                       |
 | ----------------------- | -------------------------------------------------------- | ----------------------------------------------------------------- |
-| 安装依赖                | `pnpm install --frozen-lockfile`                          | 使用 `pnpm-lock.yaml`；`.npmrc` 已配置 `node-linker=hoisted`       |
+| 安装依赖                | `pnpm install --frozen-lockfile`                          | 使用 `pnpm-lock.yaml`；`pnpm-workspace.yaml` 已配置 `nodeLinker: hoisted` |
 | 类型检查                | `pnpm run typecheck`                                     | `tsc --noEmit`                                                    |
 | 自动化测试              | `pnpm test`                                              | `tsx --test tests/*.test.ts`，29 个用例，不需要设备                |
 | 类型检查 + 测试         | `pnpm run check`                                         | 提交前建议执行                                                    |
@@ -73,16 +73,16 @@ EPUB2/3 可重排与固定版式、竖排/RTL、脚注、嵌入字体，以及 P
 - Expo Router、SQLite、文件系统、系统文件选择器；AsyncStorage 保存偏好。
 - `fflate` + `fast-xml-parser` 只负责导入前检查和元数据，不另造排版引擎。
 
-**包管理器：pnpm 10+**。`package.json` 的 `packageManager` 固定为 `pnpm@10.34.9`（Corepack/pnpm 会自动切换到该版本），`pnpm-lock.yaml` 由 `pnpm import` 从 `package-lock.json` 生成，两者解析到的版本一致；`pnpm.onlyBuiltDependencies` 允许 `tsx` 依赖的 `esbuild` 执行 postinstall。仓库同时保留 `package-lock.json` 供 npm 用户回退。
+**包管理器：pnpm 12（10.26+ 的旧版也能正确读取本仓库的配置）**。`package.json` 的 `packageManager` 固定为 `pnpm@12.16.1`，用别的 pnpm 版本运行时它会自动切换到该版本；`pnpm-lock.yaml` 由 `pnpm import` 从 `package-lock.json` 生成，两者解析到的版本一致。所有项目级设置都写在 `pnpm-workspace.yaml`：`allowBuilds` 放行 `tsx` 依赖的 `esbuild` 的构建脚本，`nodeLinker: hoisted` 把 `node_modules` 摊平。仓库同时保留 `package-lock.json` 供 npm 用户回退。
 
-`.npmrc` 里的 `node-linker=hoisted` **不是可选项**：pnpm 默认的隔离符号链接 `node_modules` 会让 React Native / Expo 的 Metro、Gradle、CocoaPods 和 config plugin 找不到原生模块，必须改用扁平布局。`react-dom` 仅为 Expo/Router 间接依赖锁定同版 React 的 peer，不表示提供 Web 应用。**不要直接把所有依赖升级到 latest**（尤其 NativeWind RC 锁定的 `lightningcss 1.30.1` 与 Expo 57 Metro 版本），也不要用 `--force` / `--legacy-peer-deps` 绕过 peer 冲突。
+`pnpm-workspace.yaml` 里的 `nodeLinker: hoisted` **不是可选项**：pnpm 默认的隔离符号链接 `node_modules` 会让 React Native / Expo 的 Metro、Gradle、CocoaPods 和 config plugin 找不到原生模块，必须改用扁平布局。**pnpm 11+ 不再读取 `.npmrc` 里的 `node-linker`，也不再读取 `package.json` 的 `pnpm` 字段**，所以这些设置只能放在 `pnpm-workspace.yaml`（旧位置会被静默忽略，`node_modules` 会悄悄变回隔离布局）。`react-dom` 仅为 Expo/Router 间接依赖锁定同版 React 的 peer，不表示提供 Web 应用。**不要直接把所有依赖升级到 latest**（尤其 NativeWind RC 锁定的 `lightningcss 1.30.1` 与 Expo 57 Metro 版本），也不要用 `--force` / `--legacy-peer-deps` 绕过 peer 冲突。
 
 ## 1. 准备环境
 
 共同要求：
 
 - **Node.js 24+**（Readium 的部分间接依赖要求 Node 24，`.nvmrc` 写的是 24）。例如 `nvm install 24 && nvm use 24`，用 `node --version` 确认。
-- **pnpm 10+**：推荐 `corepack enable`（Node 24 自带 Corepack；Node 25+ 需先 `npm i -g corepack`），或直接 `npm i -g pnpm@10.34.9`。`packageManager` 字段会让 pnpm 自动切换到固定版本，首次可能联网下载。
+- **pnpm 12.16.1**（`packageManager` 已固定；pnpm 10.26+ 也能读本仓库的 `pnpm-workspace.yaml`）。推荐用官方脚本或 npm 安装：`curl -fsSL https://get.pnpm.io/install.sh | sh -` 或 `npm i -g pnpm@12.16.1`。**不要用 `--ignore-scripts` 安装 pnpm**，否则 pnpm 12 会退化成通过 Node.js 运行，并提示 “pnpm is running through Node.js…”（能用，但每次启动都慢）。用 `corepack enable` 也可以，但 Corepack 不执行 pnpm 的安装脚本，同样会看到这条提示。`packageManager` 字段会让 pnpm 自动切换到固定版本，首次可能联网下载。
 - Git；首次安装/原生构建可联网访问 npm、Google Maven、Maven Central、JitPack，以及 iOS 的 CocoaPods/Readium spec 源。
 - 足够的原生构建空间。浏览器预览和 Expo Go 都不能运行本项目的 Readium 原生模块。
 
@@ -106,7 +106,7 @@ iOS：
 
 ```bash
 node --version               # v24 或更高
-pnpm --version               # 10+
+pnpm --version               # 12.16.1（packageManager 固定）
 pnpm install --frozen-lockfile
 pnpm run check               # 类型检查 + 自动化测试
 ```
@@ -173,9 +173,10 @@ pnpm run format:check      # 可选，见下方说明
 
 `format:check` 目前会报告 37 个既有文件的风格差异：仓库没有 `.prettierrc`，源码用单引号和较宽行宽，与 Prettier 3 默认配置不一致。这是仓库既有状态，**不是 pnpm 安装问题，也不影响 `check`、`bundle:check` 或构建**。若要统一风格，先运行 `pnpm run format` 并单独提交格式化改动（会改动大量文件）。
 
-本次环境（Node 24.22.2 + pnpm 10.34.9，Linux 沙箱）实际验证过：
+本次环境（Node 24.22.2 + pnpm 10.34.9，Linux 沙箱；pnpm 12 迁移另在 Node 22.22.3 + pnpm 12.16.1 下复验）实际验证过：
 
-- 全新 `pnpm install --frozen-lockfile` 可重复安装；`esbuild` 的 postinstall 由 `pnpm.onlyBuiltDependencies` 正常执行。
+- 全新 `pnpm install --frozen-lockfile` 可重复安装；`nodeLinker: hoisted` 生效（`node_modules/react-native` 是真实目录而非符号链接），`esbuild` 的构建脚本由 `pnpm-workspace.yaml` 的 `allowBuilds` 放行。
+- 在 pnpm 12.16.1 下，锁文件通过 `minimumReleaseAge` 供应链策略校验（`✓ Lockfile passes supply-chain policies`）。
 - `pnpm run check`：`tsc --noEmit` 严格检查通过，29 个自动化测试全部通过（种子与对比度、真实 Tailwind/NativeWind 编译、响应式判断、格式/ZIP/CRC/DRM 检查、导入取消/去重/失败回滚、真实内存 SQLite CRUD/级联删除、进度刷新、阅读偏好单位转换、原生插件幂等、light/dark 启动图资源存在性）。
 - `pnpm run bundle:check`：Android/iOS 的 Metro + Hermes bundle 导出成功。
 - `pnpm exec expo prebuild --platform android --no-install` 与 `--platform ios --no-install`：原生模板生成成功，已检查 Podfile helper、Kotlin 2.3.20、desugaring，以及 Android / iOS 的 light/dark 启动图资源。
@@ -206,7 +207,7 @@ Calliope/                      # 仓库根目录，即本工程
 ├── plugins/withReadium.cjs    # 可重现的原生集成配置
 ├── tests/                    # 不需要模拟器的自动化测试
 ├── app.config.ts             # 仅 ios/android 平台
-├── .npmrc                    # pnpm 必须使用 hoisted node_modules
+├── pnpm-workspace.yaml       # pnpm 设置：nodeLinker、allowBuilds、供应链策略（不要删）
 ├── .nvmrc                    # Node 24
 ├── pnpm-lock.yaml            # pnpm 锁文件（默认）
 └── package-lock.json         # npm 回退锁文件
@@ -237,7 +238,7 @@ Calliope/                      # 仓库根目录，即本工程
 | `android`| ubuntu-latest           | `expo prebuild --platform android --no-install` → `./gradlew assembleDebug assembleRelease bundleRelease`                | `android-builds`：debug APK、release APK、release AAB                    |
 | `ios`    | macos-15（Xcode 26.2+） | `expo prebuild --platform ios --no-install` → `pod install` → `xcodebuild`（Release / 模拟器 / 不签名）                  | `ios-simulator-app`：`YSH.app.zip`                                     |
 
-`android` 和 `ios` 都 `needs: check`，类型检查或测试挂了就不启动原生编译。workflow 用 `pnpm/action-setup@v4`（版本直接读 `package.json` 的 `packageManager`，不要再写 `version`）、`.nvmrc` 的 Node 24 和 `pnpm install --frozen-lockfile`。Android 端显式补齐 RN 0.86.3 锁定的 `platforms;android-36` / `build-tools;36.0.0` / `ndk;27.1.12297006`（GitHub 镜像自带的是 27.3/29/30，靠 AGP 自动下载容易失败），写 `android/local.properties` 指向 runner 预装 SDK，并在 prebuild 后检查启动图资源确实生成；不用 `android-actions/setup-android@v3`，它会去装已下架的 legacy `tools` 包。iOS 端优先选择镜像里的 Xcode 26.2（也兼容其他 26.x）、校验 Swift 不低于 6.2，scheme / workspace 名在运行时从生成的 `.xcodeproj` 探测，改 `app.config.ts` 的 `name` 不会让 workflow 失效。
+`android` 和 `ios` 都 `needs: check`，类型检查或测试挂了就不启动原生编译。workflow 用 `pnpm/action-setup@v6.1.0`（`main` 已迁移到 pnpm 12，v4 不再适用；版本直接读 `package.json` 的 `packageManager`，不要再写 `version`）、`.nvmrc` 的 Node 24 和 `pnpm install --frozen-lockfile`。Android 端显式补齐 RN 0.86.3 锁定的 `platforms;android-36` / `build-tools;36.0.0` / `ndk;27.1.12297006`（GitHub 镜像自带的是 27.3/29/30，靠 AGP 自动下载容易失败），写 `android/local.properties` 指向 runner 预装 SDK，并在 prebuild 后检查启动图资源确实生成；不用 `android-actions/setup-android@v3`，它会去装已下架的 legacy `tools` 包。iOS 端优先选择镜像里的 Xcode 26.2（也兼容其他 26.x）、校验 Swift 不低于 6.2，scheme / workspace 名在运行时从生成的 `.xcodeproj` 探测，改 `app.config.ts` 的 `name` 不会让 workflow 失效。
 
 **不需要配置任何 secrets，但产物有明确边界：**
 
@@ -249,9 +250,15 @@ Calliope/                      # 仓库根目录，即本工程
 
 ## 常见问题
 
-**`Nitro` / `Readium` 原生模块找不到？** 不要用 Expo Go；确认 `.npmrc` 的 `node-linker=hoisted` 没有被删掉（pnpm 默认的隔离布局会让原生构建找不到模块）。原生依赖变更后重新运行 `pnpm run android` / `pnpm run ios`，仅重启 Metro 不会安装原生模块。
+**`Nitro` / `Readium` 原生模块找不到？** 不要用 Expo Go；确认 `pnpm-workspace.yaml` 的 `nodeLinker: hoisted` 没有被删掉，重新 `pnpm install` 后 `node_modules/react-native` 应该是真实目录而不是符号链接（pnpm 默认的隔离布局会让原生构建找不到模块）。原生依赖变更后重新运行 `pnpm run android` / `pnpm run ios`，仅重启 Metro 不会安装原生模块。
 
-**pnpm 报 peer 冲突 / 安装后缺包？** 用 `pnpm install --frozen-lockfile` 和仓库锁文件，确认 Node 24 与 `packageManager` 指定的 pnpm 版本；必要时删掉 `node_modules` 重装。不要加 `--force`、`--legacy-peer-deps` 或另设 `shamefully-hoist`。若提示 `Ignored build scripts: esbuild`，检查 `package.json` 里的 `pnpm.onlyBuiltDependencies` 是否还在。
+**pnpm 报 peer 冲突 / 安装后缺包？** 用 `pnpm install --frozen-lockfile` 和仓库锁文件，确认 Node 24 与 `packageManager` 指定的 pnpm 版本；必要时删掉 `node_modules` 重装。不要加 `--force`、`--legacy-peer-deps` 或另设 `shamefully-hoist`。若提示 `Ignored build scripts: esbuild`，检查 `pnpm-workspace.yaml` 里的 `allowBuilds.esbuild` 是否为 `true`（`package.json` 的 `pnpm.onlyBuiltDependencies` 在 pnpm 11+ 已失效）。
+
+**pnpm 12 安装时那几行提示是什么意思？** 逐条说明：
+
+- `The "pnpm" field in package.json is no longer read`：pnpm 11 起不再读 `package.json` 的 `pnpm` 字段，本仓库已把设置搬进 `pnpm-workspace.yaml`，正常安装不会再出现。
+- `pnpm is running through Node.js because the script that installs its native binary was skipped`：这条说的是**你本机怎么装的 pnpm**，不是仓库问题。pnpm 12 自带原生可执行文件，安装它时如果跳过了构建/安装脚本（`npm i -g pnpm --ignore-scripts`、用 pnpm 装 pnpm 时没给 `--allow-build=pnpm`、或走 Corepack），就会退回用 Node.js 跑，功能一样但启动更慢。重装即可：`curl -fsSL https://get.pnpm.io/install.sh | sh -` 或 `npm i -g pnpm@12.16.1`。
+- `Verifying lockfile against supply-chain policies (681 entries)`：这不是提问，是进度行。pnpm 11+ 用 `minimumReleaseAge`（默认 1 天）和 `trustPolicy` 复查锁文件里的每个版本。如果某个锁定版本发布不到 24 小时，会报 `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`；本仓库已在 `pnpm-workspace.yaml` 里为这几个已知的“新版本”写了 `minimumReleaseAgeExclude`，等它们满 24 小时可以删掉。要临时跳过校验可在本地用 `pnpm install --trust-lockfile`（不要把 `trustLockfile: true` 提交进仓库）。
 
 **主题类名不生效？** 检查 `postcss.config.js`（不是 `.cjs`，当前 Expo 的 PostCSS 探测只覆盖 `.js/.mjs/.json`），以及 `metro.config.cjs` 的 NativeWind v5 包装；尝试 `pnpm start --clear`（不要写成 `pnpm start -- --clear`）。
 
