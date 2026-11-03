@@ -40,7 +40,7 @@ jobs:
         run: |
           node --version
           pnpm --version
-      - name: 类型检查 + 28 个测试
+      - name: 类型检查 + 29 个测试
         run: pnpm run check
       - name: 导出 Android / iOS JS bundle
         run: pnpm run bundle:check
@@ -56,7 +56,7 @@ jobs:
           {
             echo '### 检查通过'
             echo "- Node $(node --version) / pnpm $(pnpm --version)"
-            echo '- `pnpm run check`：类型检查 + 28 个测试通过'
+            echo '- `pnpm run check`：类型检查 + 29 个测试通过'
             echo '- `pnpm run bundle:check`：Android / iOS Hermes bundle 已导出'
             echo '- 产物 `js-bundles-android-ios`（不需要设备）'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -103,6 +103,15 @@ jobs:
             "ndk;27.1.12297006"
       - name: 生成原生工程
         run: pnpm exec expo prebuild --platform android --no-install
+      # Expo 的启动图样式无条件引用 @drawable/splashscreen_logo；缺少 image 时
+      # Gradle 链接资源才会失败，这里提前给出可定位的错误。
+      - name: 校验 Android 启动图资源
+        run: |
+          if ! find android/app/src/main/res -type f -name 'splashscreen_logo.png' -print -quit | grep -q .; then
+            echo '::error::prebuild 未生成 splashscreen_logo；检查 app.config.ts 的 expo-splash-screen image 配置'
+            exit 1
+          fi
+          find android/app/src/main/res -type f -name 'splashscreen_logo.png' -print
       - name: 让 Gradle 使用预装 SDK
         run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
       - name: 缓存 Gradle
@@ -152,15 +161,45 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      # macos-15 默认就是 Xcode 16.4，这里显式固定，避免镜像更新后悄悄换版本。
-      - name: 选择 Xcode 16.4
+      # Expo SDK 57 的 expo-modules-jsi/apple SwiftPM 包声明 swift-tools-version: 6.2；
+      # macos-15 默认的 Xcode 16.4 只带 Swift 6.1，会报 Could not resolve package dependencies。
+      - name: 选择 Xcode 26.x（Swift 6.2+）
         run: |
-          if [ -d /Applications/Xcode_16.4.app ]; then
-            sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
-          else
-            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          set -euo pipefail
+          xcode=''
+          for candidate in \
+            /Applications/Xcode_26.2.app \
+            /Applications/Xcode_26.3.app \
+            /Applications/Xcode_26.1.1.app \
+            /Applications/Xcode_26.0.1.app \
+            /Applications/Xcode.app; do
+            if [ -d "$candidate" ]; then
+              xcode="$candidate"
+              break
+            fi
+          done
+          if [ -z "$xcode" ]; then
+            echo '::error::找不到 Xcode；macos-15 镜像应提供 Xcode 26.x'
+            ls -d /Applications/Xcode*.app || true
+            exit 1
           fi
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          sudo xcodebuild -license accept
+          sudo xcodebuild -runFirstLaunch
+          echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
           xcodebuild -version
+          xcrun swift --version
+          swift_version="$(xcrun swift --version | sed -nE 's/.*Apple Swift version ([0-9]+\.[0-9]+).*/\1/p')"
+          if [ -z "$swift_version" ]; then
+            echo '::error::无法读取 Swift 版本'
+            exit 1
+          fi
+          major="${swift_version%%.*}"
+          minor="${swift_version##*.}"
+          if [ "$major" -lt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -lt 2 ]; }; then
+            echo "::error::$xcode 的 Swift $swift_version 低于 6.2；ExpoModulesJSI 的 SwiftPM 包需要 6.2"
+            exit 1
+          fi
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
       - name: 生成原生工程
@@ -207,6 +246,8 @@ jobs:
           if [ -f ios-xcodebuild.log ]; then
             echo '=== error / fatal 行 ==='
             grep -nE 'error:|fatal error:|BUILD FAILED|The following build commands failed' ios-xcodebuild.log | tail -60 || true
+            echo '=== SwiftPM 依赖解析错误上下文 ==='
+            grep -n -B5 -A12 'Could not resolve package dependencies' ios-xcodebuild.log || true
             echo '=== 日志末尾 80 行 ==='
             tail -n 80 ios-xcodebuild.log
           fi

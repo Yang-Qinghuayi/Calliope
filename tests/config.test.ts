@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 const require = createRequire(import.meta.url);
 const { patchPodfile, patchGradle, patchProjectBuildGradle } = require('../plugins/withReadium.cjs');
 test('native setup is idempotent and fails on unknown templates', () => {
@@ -22,6 +23,25 @@ test('native setup is idempotent and fails on unknown templates', () => {
   assert.match(patchedRoot, /android\.kotlinVersion/);
   assert.match(patchedRoot, /kotlin-gradle-plugin:/);
   assert.throws(() => patchProjectBuildGradle('unsupported'));
+});
+test('splash screen points at a real image for both light and dark themes', async () => {
+  // Expo 的 Android 启动图样式无条件引用 @drawable/splashscreen_logo；
+  // 不提供 image 时 prebuild 不会生成该资源，Gradle 资源链接会失败。
+  const { default: config } = await import('../app.config.ts');
+  const splash = config.plugins?.find(
+    (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-splash-screen'
+  );
+  assert.ok(Array.isArray(splash));
+  const options = splash[1] as {
+    image?: string;
+    dark?: { image?: string };
+  };
+  for (const image of [options.image, options.dark?.image]) {
+    assert.equal(typeof image, 'string');
+    const bytes = readFileSync(resolve(process.cwd(), image!));
+    assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.ok(bytes.length > 100);
+  }
 });
 test('NativeWind v5 semantic variables survive actual Tailwind and native CSS compilation', async () => {
   const postcss = require('postcss'),
