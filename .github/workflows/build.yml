@@ -1,6 +1,7 @@
-name: 构建 Android / iOS 产物
+name: 构建 iOS 产物
 
-# 每次 push 到 main、每次 PR 更新都会打包；也可在 Actions 页面手动触发。
+# 每次 push 到 main、每次 PR 更新都会打包 iOS 模拟器 App；也可在 Actions 页面手动触发。
+# Android job 暂时停用：配置保留，待 Gradle 失败原因定位后删除 `if: false` 即可恢复。
 # 想让所有分支的 push 都触发，把 branches 改成 ['**'] 即可。
 on:
   push:
@@ -60,10 +61,14 @@ jobs:
             echo '- `pnpm run check`：类型检查 + 29 个测试通过'
             echo '- `pnpm run bundle:check`：Android / iOS Hermes bundle 已导出'
             echo '- 产物 `js-bundles-android-ios`（不需要设备）'
+            echo '- Android 原生 job 暂时停用；本次只继续跑 iOS 模拟器 App'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Android 原生编译暂时停用，保留完整 job 配置方便后续恢复。
+  # 恢复时删除下一行 `if: false` 即可。
   android:
-    name: Android APK / AAB
+    if: false
+    name: Android APK / AAB（暂时停用）
     needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 90

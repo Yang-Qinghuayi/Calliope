@@ -1,6 +1,6 @@
 # YSH 阅读 · 移动端
 
-[![构建 Android / iOS 产物](https://github.com/Yang-Qinghuayi/Calliope/actions/workflows/build.yml/badge.svg)](https://github.com/Yang-Qinghuayi/Calliope/actions/workflows/build.yml)
+[![构建 iOS 产物](https://github.com/Yang-Qinghuayi/Calliope/actions/workflows/build.yml/badge.svg)](https://github.com/Yang-Qinghuayi/Calliope/actions/workflows/build.yml)
 
 > 一个本地优先的 EPUB / PDF 阅读器，基于 React Native Readium，面向 Android、iOS 手机与平板，提供种子色驱动的 Material 主题。
 
@@ -183,7 +183,7 @@ pnpm run format:check      # 可选，见下方说明
 - `pnpm start` 能启动 Metro（`--dev-client`），`pnpm start --clear` 可清缓存重启。
 - `npm ci --dry-run` 确认 `package-lock.json` 仍与 `package.json` 同步（npm 回退路径可用）。
 
-**未完成的验证：**当前执行环境没有 Android SDK/JDK/Xcode/CocoaPods/设备，且网络白名单不覆盖原生依赖仓库。因此没有生成 APK/IPA，没有跑 Gradle/Swift 编译，没有真机/UI 端到端验收。通过 bundle/prebuild 不能证明原生 API 行为无误，pnpm 的 hoisted 布局也仍需在本机完成一次真实原生编译来确认。
+**本地未完成的验证：**当前执行环境没有 Android SDK/JDK/Xcode/CocoaPods/设备，且网络白名单不覆盖原生依赖仓库。因此本地没有生成 APK/IPA，没有跑 Gradle/Swift 编译，没有真机/UI 端到端验收。通过 bundle/prebuild 不能证明原生 API 行为无误。GitHub Actions 的 `ios` job 已在 Xcode 26.x / Swift 6.2+ 下成功完成 Release 模拟器编译并上传 `ios-simulator-app`（run `41584309524`）；这仍不等同于真机签名包或 UI 验收，Android 原生编译也暂未恢复。
 
 详细真机清单见 [设备验收矩阵](./DEVICE-TESTING.md)。
 
@@ -202,7 +202,7 @@ Calliope/                      # 仓库根目录，即本工程
 │   ├── domain/               # 模型、输入校验、导入检查、阅读偏好映射
 │   ├── services/             # 导入事务、Expo 文件适配、SQLite、进度、搜索、应用状态
 │   └── theme/colors.ts       # 官方种子计算与主题 token
-├── .github/workflows/build.yml # CI：Android / iOS 自动打包
+├── .github/workflows/build.yml # CI：iOS 自动打包（Android job 暂时停用）
 ├── assets/splash-logo.png      # light / dark 共用的启动图资源
 ├── plugins/withReadium.cjs    # 可重现的原生集成配置
 ├── tests/                    # 不需要模拟器的自动化测试
@@ -230,23 +230,23 @@ Calliope/                      # 仓库根目录，即本工程
 
 ## 6. GitHub Actions 自动打包
 
-`.github/workflows/build.yml` 会在**每次 push 到 `main`、每次 PR 更新**时运行，也能在 Actions 页面手动触发（`workflow_dispatch`）。产物在对应 run 的 **Artifacts** 区下载，默认保留 14 天。
+`.github/workflows/build.yml` 会在**每次 push 到 `main`、每次 PR 更新**时运行，也能在 Actions 页面手动触发（`workflow_dispatch`）。当前只跑 `check` 与 `ios`：`android` job 保留在文件里但设了 `if: false`，暂时不产出 APK / AAB。产物在对应 run 的 **Artifacts** 区下载，默认保留 14 天。
 
 | Job      | Runner                  | 做什么                                                                                                            | 产物                                                                 |
 | -------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `check`  | ubuntu-latest           | `pnpm run check` + `pnpm run bundle:check`                                                                            | `js-bundles-android-ios`：Android / iOS 的 Hermes bundle（`.expo/export`） |
-| `android`| ubuntu-latest           | `expo prebuild --platform android --no-install` → `./gradlew assembleDebug assembleRelease bundleRelease`                | `android-builds`：debug APK、release APK、release AAB                    |
-| `ios`    | macos-15（Xcode 26.2+） | `expo prebuild --platform ios --no-install` → `pod install` → `xcodebuild`（Release / 模拟器 / 不签名）                  | `ios-simulator-app`：`YSH.app.zip`                                     |
+| `check`  | ubuntu-latest           | `pnpm run check` + `pnpm run bundle:check`（仅导出 JS bundle，不做原生编译）                                        | `js-bundles-android-ios`：Android / iOS 的 Hermes bundle（`.expo/export`） |
+| `android`| ubuntu-latest           | **暂时停用**（job 配置保留，`if: false` 跳过；待 Gradle 问题定位后恢复）                                              | 当前无 `android-builds`                                                   |
+| `ios`    | macos-15（Xcode 26.2+） | `expo prebuild --platform ios --no-install` → `pod install` → `xcodebuild`（Release / 模拟器 / 不签名）                  | `ios-simulator-app`：`Calliope-ios-simulator-*.app.zip`                 |
 
-`android` 和 `ios` 都 `needs: check`，类型检查或测试挂了就不启动原生编译。workflow 用 `pnpm/action-setup@v6.1.0`（`main` 已迁移到 pnpm 12，v4 不再适用；版本直接读 `package.json` 的 `packageManager`，不要再写 `version`）、`.nvmrc` 的 Node 24 和 `pnpm install --frozen-lockfile`。Android 端显式补齐 RN 0.86.3 锁定的 `platforms;android-36` / `build-tools;36.0.0` / `ndk;27.1.12297006`（GitHub 镜像自带的是 27.3/29/30，靠 AGP 自动下载容易失败），写 `android/local.properties` 指向 runner 预装 SDK，并在 prebuild 后检查启动图资源确实生成；不用 `android-actions/setup-android@v3`，它会去装已下架的 legacy `tools` 包。iOS 端优先选择镜像里的 Xcode 26.2（也兼容其他 26.x）、校验 Swift 不低于 6.2，scheme / workspace 名在运行时从生成的 `.xcodeproj` 探测，改 `app.config.ts` 的 `name` 不会让 workflow 失效。
+`ios` 依赖 `check`，类型检查或测试挂了就不启动原生编译；`android` 也保留 `needs: check`，但目前被 `if: false` 跳过。workflow 用 `pnpm/action-setup@v6.1.0`（`main` 已迁移到 pnpm 12，v4 不再适用；版本直接读 `package.json` 的 `packageManager`，不要再写 `version`）、`.nvmrc` 的 Node 24 和 `pnpm install --frozen-lockfile`。Android 端配置仍保留：显式补齐 RN 0.86.3 锁定的 `platforms;android-36` / `build-tools;36.0.0` / `ndk;27.1.12297006`，写 `android/local.properties` 指向 runner 预装 SDK，并在 prebuild 后检查启动图资源；不用 `android-actions/setup-android@v3`，它会去装已下架的 legacy `tools` 包。以上 Android 配置仅作恢复时参考，当前不执行。iOS 端优先选择镜像里的 Xcode 26.2（也兼容其他 26.x）、校验 Swift 不低于 6.2，scheme / workspace 名在运行时从生成的 `.xcodeproj` 探测，改 `app.config.ts` 的 `name` 不会让 workflow 失效。
 
 **不需要配置任何 secrets，但产物有明确边界：**
 
-- Android APK 用 `expo prebuild` 生成的 `debug.keystore` 签名，能装到模拟器/真机做测试，**不能上架**；AAB 也未做正式签名。
+- Android 原生 job 当前停用，不产出 APK / AAB；恢复后仍是用 `expo prebuild` 生成的 `debug.keystore` 签名，能装到模拟器/真机做测试，**不能上架**，AAB 也未做正式签名。
 - iOS 产物是 `CODE_SIGNING_ALLOWED=NO` 编出来的模拟器 `.app`，只能装进 iOS Simulator，**不能装真机、不能上 TestFlight**。要真机 IPA / 商店包，需要另外配置 Apple 证书、provisioning profile、Android release keystore 和导出步骤（或改用 EAS Build），本 workflow 不包含这些。
 - `on.push.branches` 目前只写 `main`，想让所有分支的 push 都触发就改成 `['**']`；公共仓库 macOS 分钟免费，私有仓库按 10 倍计费。`concurrency` 会取消同一 ref 上的旧构建。
 
-> 前两次 CI 真编译暴露了三类只在 Gradle / `xcodebuild` 阶段才出现的问题，已据此修复：① `plugins/withReadium.cjs` 把 Android 的 `kotlin-gradle-plugin` classpath 固定到 `android.kotlinVersion`，否则 RN 模板的 Kotlin 2.1 编译器读不了 Readium 3.3 的 2.3 元数据；② `expo-splash-screen` 的 Android 样式无条件引用 `@drawable/splashscreen_logo`，而原配置没有 `image`，现在新增 `assets/splash-logo.png` 并在 `app.config.ts` 为 light / dark 都指定它；③ `expo-modules-jsi/apple` 的 SwiftPM 包要求 Swift tools 6.2，Xcode 16.4（Swift 6.1）会报 `Could not resolve package dependencies`，workflow 现在优先选 Xcode 26.2 并校验 Swift 版本。`-quiet`、失败日志上下文和 `ios-xcodebuild-log` artifact 只负责让真实报错可见，不是构建修复。原生产物是否可用，以对应 Actions run 的绿色状态和 Artifacts 为准。
+> 前三次 CI 真编译暴露了三类只在 Gradle / `xcodebuild` 阶段才出现的问题：① `plugins/withReadium.cjs` 把 Android 的 `kotlin-gradle-plugin` classpath 固定到 `android.kotlinVersion`，否则 RN 模板的 Kotlin 2.1 编译器读不了 Readium 3.3 的 2.3 元数据；② `expo-splash-screen` 的 Android 样式无条件引用 `@drawable/splashscreen_logo`，而原配置没有 `image`，现在新增 `assets/splash-logo.png` 并在 `app.config.ts` 为 light / dark 都指定它；③ `expo-modules-jsi/apple` 的 SwiftPM 包要求 Swift tools 6.2，Xcode 16.4（Swift 6.1）会报 `Could not resolve package dependencies`。前两项已据此修复，第三项在 run `41584309524` 中已由 `ios` job 验证成功并上传 `ios-simulator-app`；同一次 run 的 `android` job 仍在 Gradle 编译阶段失败，且超大日志被截断，具体报错尚待提取。按当前范围先聚焦 iOS，Android job 暂以 `if: false` 停用，不把失败检查带进 PR；删除该行即可恢复 Android 构建。`-quiet`、失败日志上下文和 `ios-xcodebuild-log` artifact 只负责让真实报错可见，不是构建修复。原生产物是否可用，以对应 Actions run 的绿色状态和 Artifacts 为准。
 
 ## 常见问题
 
@@ -271,5 +271,7 @@ Calliope/                      # 仓库根目录，即本工程
 **iOS 找不到 Readium Pod 或 Minizip 编译失败？** 检查插件生成的 Readium spec source、`readium_pods`、`readium_post_install`，使用当前锁定版本重新安装 pods；不要通过忽略报错声称构建成功。
 
 **npm 用户还能用吗？** 可以，`npm ci` + `npm run check` 仍然可用，`package-lock.json` 与 `pnpm-lock.yaml` 由同一份 `package.json` 生成。React/React DOM 已对齐到 19.2.3，`npm ci` 不需要 `--force` 或 `--legacy-peer-deps`；升级依赖时记得同时更新两份锁文件。
+
+**CI 里为什么没有 `android-builds`？** Android 原生编译在最新 run 中仍失败，且日志过大被 GitHub 截断；当前先按 iOS 范围交付，workflow 里的 `android` job 保留但加了 `if: false`，因此会显示为 skipped，不产出 APK / AAB。`check` 仍会用 `bundle:check` 导出双平台 JS bundle，这不是 Android 原生编译。待拿到完整 Gradle 报错并修好后，删除这一行即可恢复。
 
 **CI 里为什么 iOS 是 `.app.zip` 不是 IPA？** 没有 Apple 签名证书时只能编模拟器包，`xcodebuild` 走 `CODE_SIGNING_ALLOWED=NO`。好处是不需要任何 secrets，也能把 Readium / Nitro 的原生编译跑起来；代价是产物只能装进 iOS Simulator。真机 IPA 需要补签名步骤，见第 6 节。
