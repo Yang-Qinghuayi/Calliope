@@ -1,4 +1,4 @@
-const { withPodfile, withAppBuildGradle } = require('expo/config-plugins');
+const { withPodfile, withAppBuildGradle, withProjectBuildGradle } = require('expo/config-plugins');
 function patchPodfile(s) {
   if (s.includes('# ysh-readium')) return s;
   if (!/target .+ do/.test(s) || !s.includes('post_install do |installer|'))
@@ -29,15 +29,32 @@ function patchGradle(s) {
       )
   );
 }
+// expo-build-properties writes `android.kotlinVersion` into gradle.properties and Expo
+// uses it for kotlin-stdlib/KSP, but the RN template's root build.gradle still resolves
+// kotlin-gradle-plugin from React Native's 2.1.x version catalog. Readium 3.3.0 ships
+// Kotlin 2.3 metadata, so pin the plugin classpath to the same property at build time.
+function patchProjectBuildGradle(s) {
+  if (s.includes('// ysh-readium-kotlin')) return s;
+  const target = "classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')";
+  if (!s.includes(target)) throw new Error('Readium: unexpected android/build.gradle template');
+  const pinned =
+    "classpath(\"org.jetbrains.kotlin:kotlin-gradle-plugin:${project.findProperty('android.kotlinVersion') ?: '2.1.20'}\")";
+  return '// ysh-readium-kotlin\n' + s.replace(target, pinned);
+}
 module.exports = function withReadium(config) {
   config = withPodfile(config, (mod) => {
     mod.modResults.contents = patchPodfile(mod.modResults.contents);
     return mod;
   });
-  return withAppBuildGradle(config, (mod) => {
+  config = withAppBuildGradle(config, (mod) => {
     mod.modResults.contents = patchGradle(mod.modResults.contents);
+    return mod;
+  });
+  return withProjectBuildGradle(config, (mod) => {
+    mod.modResults.contents = patchProjectBuildGradle(mod.modResults.contents);
     return mod;
   });
 };
 module.exports.patchPodfile = patchPodfile;
 module.exports.patchGradle = patchGradle;
+module.exports.patchProjectBuildGradle = patchProjectBuildGradle;

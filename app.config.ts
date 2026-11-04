@@ -11,7 +11,19 @@ const config: ExpoConfig = {
   ios: { bundleIdentifier: 'com.qinghuayi.ysh.reader', supportsTablet: true },
   android: { package: 'com.qinghuayi.ysh.reader' },
   plugins: [
-    ['expo-splash-screen', { backgroundColor: '#fff8f5', dark: { backgroundColor: '#1b1411' } }],
+    [
+      'expo-splash-screen',
+      {
+        image: './assets/splash-logo.png',
+        imageWidth: 180,
+        resizeMode: 'contain',
+        backgroundColor: '#fff8f5',
+        dark: {
+          image: './assets/splash-logo.png',
+          backgroundColor: '#1b1411',
+        },
+      },
+    ],
     'expo-router',
     'expo-dev-client',
     'expo-sqlite',

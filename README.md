@@ -1,5 +1,7 @@
 # YSH 阅读 · 移动端
 
+[![构建 iOS 产物](https://github.com/Yang-Qinghuayi/Calliope/actions/workflows/build.yml/badge.svg)](https://github.com/Yang-Qinghuayi/Calliope/actions/workflows/build.yml)
+
 > 一个本地优先的 EPUB / PDF 阅读器，基于 React Native Readium，面向 Android、iOS 手机与平板，提供种子色驱动的 Material 主题。
 
 这段话可以直接用于项目介绍。更完整的介绍：
@@ -14,7 +16,7 @@
 node --version                  # 需要 v24+（.nvmrc = 24）
 npm i -g pnpm@12.16.1           # 本机还没有 pnpm 时；packageManager 固定 pnpm@12.16.1
 pnpm install --frozen-lockfile   # 按 pnpm-lock.yaml 安装依赖；设置全在 pnpm-workspace.yaml
-pnpm run check                   # TypeScript 严格检查 + 28 个自动化测试
+pnpm run check                   # TypeScript 严格检查 + 29 个自动化测试
 pnpm run android                 # Android：先启动模拟器或连接真机
 # macOS + Xcode 时改用：pnpm run ios
 ```
@@ -33,7 +35,7 @@ pnpm start                      # expo start --dev-client，启动 Metro
 | ----------------------- | -------------------------------------------------------- | ----------------------------------------------------------------- |
 | 安装依赖                | `pnpm install --frozen-lockfile`                          | 使用 `pnpm-lock.yaml`；`pnpm-workspace.yaml` 已配置 `nodeLinker: hoisted` |
 | 类型检查                | `pnpm run typecheck`                                     | `tsc --noEmit`                                                    |
-| 自动化测试              | `pnpm test`                                              | `tsx --test tests/*.test.ts`，28 个用例，不需要设备                |
+| 自动化测试              | `pnpm test`                                              | `tsx --test tests/*.test.ts`，29 个用例，不需要设备                |
 | 类型检查 + 测试         | `pnpm run check`                                         | 提交前建议执行                                                    |
 | 启动 Metro              | `pnpm start` / `pnpm start --clear`                      | `expo start --dev-client`；清缓存直接加参数，不要写 `--`            |
 | Android 构建运行        | `pnpm run android`                                       | `expo run:android`；需要 Android SDK / JDK 17 / 设备               |
@@ -93,8 +95,8 @@ Android：
 
 iOS：
 
-- **必须使用 macOS**，安装匹配 Expo SDK 57 的 Xcode、Command Line Tools、iOS Simulator、CocoaPods。
-- Readium 自身要求 Xcode 16.4+；当前 Expo/RN 组合可能要求更新工具，按本机 Xcode/SDK 的实际构建检查处理。
+- **必须使用 macOS**，安装匹配 Expo SDK 57 的 **Xcode 26.2+（Swift 6.2+）**、Command Line Tools、iOS Simulator、CocoaPods。
+- Readium 自身要求 Xcode 16.4+，但当前 Expo 组合的 `expo-modules-jsi/apple` SwiftPM 包声明 `swift-tools-version: 6.2`；Xcode 16.4 只带 Swift 6.1，会在编译期报 `Could not resolve package dependencies: package 'apple' is using Swift tools version 6.2.0`。CI 显式优先选择 Xcode 26.2，并在构建前校验 Swift 版本；本机也请使用 26.2+，然后重新 prebuild / `pod install`。
 - 当前生成模板 deployment target 为 **iOS 16.4**，iPad 支持开启，未要求全屏；不要仅依据 Readium 的 iOS 15.1 最低要求下调整个应用。
 - 真机需要你自己的 Apple 开发签名；修改 `app.config.ts` 中的 bundle identifier 后重新 prebuild。
 
@@ -164,7 +166,7 @@ pnpm run ios:release       # macOS
 ## 3. 测试与打包检查
 
 ```bash
-pnpm run check             # TypeScript + 28 个测试
+pnpm run check             # TypeScript + 29 个测试
 pnpm run bundle:check      # Android/iOS JS + Hermes bundle；不编译 Swift/Kotlin
 pnpm run format:check      # 可选，见下方说明
 ```
@@ -175,13 +177,13 @@ pnpm run format:check      # 可选，见下方说明
 
 - 全新 `pnpm install --frozen-lockfile` 可重复安装；`nodeLinker: hoisted` 生效（`node_modules/react-native` 是真实目录而非符号链接），`esbuild` 的构建脚本由 `pnpm-workspace.yaml` 的 `allowBuilds` 放行。
 - 在 pnpm 12.16.1 下，锁文件通过 `minimumReleaseAge` 供应链策略校验（`✓ Lockfile passes supply-chain policies`）。
-- `pnpm run check`：`tsc --noEmit` 严格检查通过，28 个自动化测试全部通过（种子与对比度、真实 Tailwind/NativeWind 编译、响应式判断、格式/ZIP/CRC/DRM 检查、导入取消/去重/失败回滚、真实内存 SQLite CRUD/级联删除、进度刷新、阅读偏好单位转换、原生插件幂等）。
+- `pnpm run check`：`tsc --noEmit` 严格检查通过，29 个自动化测试全部通过（种子与对比度、真实 Tailwind/NativeWind 编译、响应式判断、格式/ZIP/CRC/DRM 检查、导入取消/去重/失败回滚、真实内存 SQLite CRUD/级联删除、进度刷新、阅读偏好单位转换、原生插件幂等、light/dark 启动图资源存在性）。
 - `pnpm run bundle:check`：Android/iOS 的 Metro + Hermes bundle 导出成功。
-- `pnpm exec expo prebuild --platform android --no-install` 与 `--platform ios --no-install`：原生模板生成成功，已检查 Podfile helper、Kotlin 2.3.20 和 desugaring 插入。
+- `pnpm exec expo prebuild --platform android --no-install` 与 `--platform ios --no-install`：原生模板生成成功，已检查 Podfile helper、Kotlin 2.3.20、desugaring，以及 Android / iOS 的 light/dark 启动图资源。
 - `pnpm start` 能启动 Metro（`--dev-client`），`pnpm start --clear` 可清缓存重启。
 - `npm ci --dry-run` 确认 `package-lock.json` 仍与 `package.json` 同步（npm 回退路径可用）。
 
-**未完成的验证：**当前执行环境没有 Android SDK/JDK/Xcode/CocoaPods/设备，且网络白名单不覆盖原生依赖仓库。因此没有生成 APK/IPA，没有跑 Gradle/Swift 编译，没有真机/UI 端到端验收。通过 bundle/prebuild 不能证明原生 API 行为无误，pnpm 的 hoisted 布局也仍需在本机完成一次真实原生编译来确认。
+**本地未完成的验证：**当前执行环境没有 Android SDK/JDK/Xcode/CocoaPods/设备，且网络白名单不覆盖原生依赖仓库。因此本地没有生成 APK/IPA，没有跑 Gradle/Swift 编译，没有真机/UI 端到端验收。通过 bundle/prebuild 不能证明原生 API 行为无误。GitHub Actions 的 `ios` job 已在 Xcode 26.x / Swift 6.2+ 下成功完成 Release 模拟器编译并上传 `ios-simulator-app`（run `41584309524`）；这仍不等同于真机签名包或 UI 验收，Android 原生编译也暂未恢复。
 
 详细真机清单见 [设备验收矩阵](./DEVICE-TESTING.md)。
 
@@ -200,6 +202,8 @@ Calliope/                      # 仓库根目录，即本工程
 │   ├── domain/               # 模型、输入校验、导入检查、阅读偏好映射
 │   ├── services/             # 导入事务、Expo 文件适配、SQLite、进度、搜索、应用状态
 │   └── theme/colors.ts       # 官方种子计算与主题 token
+├── .github/workflows/build.yml # CI：iOS 自动打包（Android job 暂时停用）
+├── assets/splash-logo.png      # light / dark 共用的启动图资源
 ├── plugins/withReadium.cjs    # 可重现的原生集成配置
 ├── tests/                    # 不需要模拟器的自动化测试
 ├── app.config.ts             # 仅 ios/android 平台
@@ -224,6 +228,26 @@ Calliope/                      # 仓库根目录，即本工程
 - 双页/竖排/固定版式、选区重排定位、VoiceOver/TalkBack、长列表性能必须真机验证。当前没有“完美阅读器”或所有出版物完全兼容的保证。
 - NativeWind 使用 RC，已固定 `lightningcss 1.30.1` 与 Expo 57 Metro 版本：1.30.2 被该 RC 明确禁止，较新的 CSS 编译依赖组合曾出现反序列化错误。不要无回归升级这些依赖。
 
+## 6. GitHub Actions 自动打包
+
+`.github/workflows/build.yml` 会在**每次 push 到 `main`、每次 PR 更新**时运行，也能在 Actions 页面手动触发（`workflow_dispatch`）。当前只跑 `check` 与 `ios`：`android` job 保留在文件里但设了 `if: false`，暂时不产出 APK / AAB。产物在对应 run 的 **Artifacts** 区下载，默认保留 14 天。
+
+| Job      | Runner                  | 做什么                                                                                                            | 产物                                                                 |
+| -------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `check`  | ubuntu-latest           | `pnpm run check` + `pnpm run bundle:check`（仅导出 JS bundle，不做原生编译）                                        | `js-bundles-android-ios`：Android / iOS 的 Hermes bundle（`.expo/export`） |
+| `android`| ubuntu-latest           | **暂时停用**（job 配置保留，`if: false` 跳过；待 Gradle 问题定位后恢复）                                              | 当前无 `android-builds`                                                   |
+| `ios`    | macos-15（Xcode 26.2+） | `expo prebuild --platform ios --no-install` → `pod install` → `xcodebuild`（Release / 模拟器 / 不签名）                  | `ios-simulator-app`：`Calliope-ios-simulator-*.app.zip`                 |
+
+`ios` 依赖 `check`，类型检查或测试挂了就不启动原生编译；`android` 也保留 `needs: check`，但目前被 `if: false` 跳过。workflow 用 `pnpm/action-setup@v6.1.0`（`main` 已迁移到 pnpm 12，v4 不再适用；版本直接读 `package.json` 的 `packageManager`，不要再写 `version`）、`.nvmrc` 的 Node 24 和 `pnpm install --frozen-lockfile`。Android 端配置仍保留：显式补齐 RN 0.86.3 锁定的 `platforms;android-36` / `build-tools;36.0.0` / `ndk;27.1.12297006`，写 `android/local.properties` 指向 runner 预装 SDK，并在 prebuild 后检查启动图资源；不用 `android-actions/setup-android@v3`，它会去装已下架的 legacy `tools` 包。以上 Android 配置仅作恢复时参考，当前不执行。iOS 端优先选择镜像里的 Xcode 26.2（也兼容其他 26.x）、校验 Swift 不低于 6.2，scheme / workspace 名在运行时从生成的 `.xcodeproj` 探测，改 `app.config.ts` 的 `name` 不会让 workflow 失效。
+
+**不需要配置任何 secrets，但产物有明确边界：**
+
+- Android 原生 job 当前停用，不产出 APK / AAB；恢复后仍是用 `expo prebuild` 生成的 `debug.keystore` 签名，能装到模拟器/真机做测试，**不能上架**，AAB 也未做正式签名。
+- iOS 产物是 `CODE_SIGNING_ALLOWED=NO` 编出来的模拟器 `.app`，只能装进 iOS Simulator，**不能装真机、不能上 TestFlight**。要真机 IPA / 商店包，需要另外配置 Apple 证书、provisioning profile、Android release keystore 和导出步骤（或改用 EAS Build），本 workflow 不包含这些。
+- `on.push.branches` 目前只写 `main`，想让所有分支的 push 都触发就改成 `['**']`；公共仓库 macOS 分钟免费，私有仓库按 10 倍计费。`concurrency` 会取消同一 ref 上的旧构建。
+
+> 前三次 CI 真编译暴露了三类只在 Gradle / `xcodebuild` 阶段才出现的问题：① `plugins/withReadium.cjs` 把 Android 的 `kotlin-gradle-plugin` classpath 固定到 `android.kotlinVersion`，否则 RN 模板的 Kotlin 2.1 编译器读不了 Readium 3.3 的 2.3 元数据；② `expo-splash-screen` 的 Android 样式无条件引用 `@drawable/splashscreen_logo`，而原配置没有 `image`，现在新增 `assets/splash-logo.png` 并在 `app.config.ts` 为 light / dark 都指定它；③ `expo-modules-jsi/apple` 的 SwiftPM 包要求 Swift tools 6.2，Xcode 16.4（Swift 6.1）会报 `Could not resolve package dependencies`。前两项已据此修复，第三项在 run `41584309524` 中已由 `ios` job 验证成功并上传 `ios-simulator-app`；同一次 run 的 `android` job 仍在 Gradle 编译阶段失败，且超大日志被截断，具体报错尚待提取。按当前范围先聚焦 iOS，Android job 暂以 `if: false` 停用，不把失败检查带进 PR；删除该行即可恢复 Android 构建。`-quiet`、失败日志上下文和 `ios-xcodebuild-log` artifact 只负责让真实报错可见，不是构建修复。原生产物是否可用，以对应 Actions run 的绿色状态和 Artifacts 为准。
+
 ## 常见问题
 
 **`Nitro` / `Readium` 原生模块找不到？** 不要用 Expo Go；确认 `pnpm-workspace.yaml` 的 `nodeLinker: hoisted` 没有被删掉，重新 `pnpm install` 后 `node_modules/react-native` 应该是真实目录而不是符号链接（pnpm 默认的隔离布局会让原生构建找不到模块）。原生依赖变更后重新运行 `pnpm run android` / `pnpm run ios`，仅重启 Metro 不会安装原生模块。
@@ -238,8 +262,16 @@ Calliope/                      # 仓库根目录，即本工程
 
 **主题类名不生效？** 检查 `postcss.config.js`（不是 `.cjs`，当前 Expo 的 PostCSS 探测只覆盖 `.js/.mjs/.json`），以及 `metro.config.cjs` 的 NativeWind v5 包装；尝试 `pnpm start --clear`（不要写成 `pnpm start -- --clear`）。
 
-**Android Kotlin 编译不兼容？** 检查生成的 `android/gradle.properties` 中 `android.kotlinVersion=2.3.20`。修改原生设置后重新 prebuild；检查本机 JDK/Gradle/SDK 错误，不要绕过 peer 冲突强行安装。
+**Android Kotlin 编译不兼容？** 检查生成的 `android/gradle.properties` 中 `android.kotlinVersion=2.3.20`，以及 `plugins/withReadium.cjs` 是否把 `android/build.gradle` 里的 `kotlin-gradle-plugin` classpath 固定到同一个属性：RN 模板默认按 React Native 的 2.1.x 版本目录解析编译器，而 Readium 3.3.0 是 Kotlin 2.3 元数据，两者不一致会报 “binary version of its metadata is 2.3.0, expected version is 2.1.0”。修改原生设置后重新 prebuild；检查本机 JDK/Gradle/SDK 错误，不要绕过 peer 冲突强行安装。
+
+**Android 报 `resource drawable/splashscreen_logo not found`？** Expo 的启动图样式总是引用这个 drawable；只配置背景色而不配置 `image` 时，`prebuild` 不会生成资源，Gradle 链接资源才失败。检查 `app.config.ts` 的 `expo-splash-screen` 是否为 `image` 和 `dark.image` 指定了 `./assets/splash-logo.png`，且文件存在；重新运行 `pnpm run prebuild`。`check` 里的启动图资源测试和 workflow 的 prebuild 后检查会提前拦住这个错误。
+
+**iOS 报 `package 'apple' is using Swift tools version 6.2.0`？** 这不是 CocoaPods 版本冲突，而是 `expo-modules-jsi/apple/Package.swift` 要求 Swift 6.2，Xcode 16.4 只提供 Swift 6.1。本机改用 Xcode 26.2+（CI 也是），`sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer` 后重新 prebuild / `pod install` / 构建；不要通过删除 SwiftPM 缓存或改 `Package.swift` 绕过。
 
 **iOS 找不到 Readium Pod 或 Minizip 编译失败？** 检查插件生成的 Readium spec source、`readium_pods`、`readium_post_install`，使用当前锁定版本重新安装 pods；不要通过忽略报错声称构建成功。
 
 **npm 用户还能用吗？** 可以，`npm ci` + `npm run check` 仍然可用，`package-lock.json` 与 `pnpm-lock.yaml` 由同一份 `package.json` 生成。React/React DOM 已对齐到 19.2.3，`npm ci` 不需要 `--force` 或 `--legacy-peer-deps`；升级依赖时记得同时更新两份锁文件。
+
+**CI 里为什么没有 `android-builds`？** Android 原生编译在最新 run 中仍失败，且日志过大被 GitHub 截断；当前先按 iOS 范围交付，workflow 里的 `android` job 保留但加了 `if: false`，因此会显示为 skipped，不产出 APK / AAB。`check` 仍会用 `bundle:check` 导出双平台 JS bundle，这不是 Android 原生编译。待拿到完整 Gradle 报错并修好后，删除这一行即可恢复。
+
+**CI 里为什么 iOS 是 `.app.zip` 不是 IPA？** 没有 Apple 签名证书时只能编模拟器包，`xcodebuild` 走 `CODE_SIGNING_ALLOWED=NO`。好处是不需要任何 secrets，也能把 Readium / Nitro 的原生编译跑起来；代价是产物只能装进 iOS Simulator。真机 IPA 需要补签名步骤，见第 6 节。
